@@ -1,0 +1,47 @@
+name: 'FacturaScripts Forja Publisher'
+description: 'Uploads a plugin ZIP as a new build on the FacturaScripts forja after a release.'
+author: 'erseco'
+branding:
+  icon: upload-cloud
+  color: blue
+
+inputs:
+  plugin-slug:
+    description: 'Plugin slug on the forja (lowercase, e.g. "quickcreate", "aiscan").'
+    required: true
+  zip-path:
+    description: 'Local path to the plugin ZIP produced by the release step.'
+    required: true
+  version:
+    description: 'Version to attach to the build. Accepts integer, x.y or x.y.z.'
+    required: true
+  forja-user:
+    description: 'Forja username/email. Use a GitHub secret, never hardcode.'
+    required: true
+  forja-password:
+    description: 'Forja password. Use a GitHub secret, never hardcode.'
+    required: true
+  forja-url:
+    description: 'Base URL of the forja.'
+    required: false
+    default: 'https://facturascripts.com'
+  normalize-version:
+    description: 'If true (default), semver x.y.z is encoded to a forja-compatible numeric version.'
+    required: false
+    default: 'true'
+  dry-run:
+    description: 'If true, login and fetch the CSRF token but do not POST the build.'
+    required: false
+    default: 'false'
+
+outputs:
+  build-id:
+    description: 'Id of the newly created build on the forja.'
+  build-version:
+    description: 'Version stored on the forja (post-normalization).'
+  build-url:
+    description: 'URL to the plugin admin page (anchored to the new build modal when available).'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.cjs'

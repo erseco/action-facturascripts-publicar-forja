@@ -1,0 +1,19 @@
+{
+  "name": "action-facturascripts-publicar-forja",
+  "version": "1.0.0",
+  "description": "GitHub Action that uploads a plugin ZIP as a new build on the FacturaScripts forja.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild index.js --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs",
+    "test": "node --test test/lib.test.js",
+    "dry-run": "node scripts/dry-run.js"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.omc/
+scripts/debug-*.js
+scripts/try-*.js

@@ -19431,17 +19431,14 @@ async function updateBuildStatus(client, params) {
   }
   return { buildId, status: reloaded.status, previous: current };
 }
-function normalizeVersionForForja(version) {
+function validateForjaVersion(version) {
   const raw = String(version).trim().replace(/^v/i, "");
-  if (/^\d+(\.\d+)?$/.test(raw)) return raw;
-  const parts = raw.split(".");
-  const major = Number(parts[0] || "0");
-  const minor = Number(parts[1] || "0");
-  const patch = Number(parts[2] || "0");
-  if (Number.isNaN(major) || Number.isNaN(minor) || Number.isNaN(patch)) {
-    throw new Error(`Cannot parse version "${version}" as numeric.`);
+  if (!/^\d+(\.\d+)?$/.test(raw)) {
+    throw new Error(
+      `Version "${version}" is not a valid FacturaScripts version. Use an integer like "7" or a decimal like "7.1". Triple-dot (1.0.1) and pre-release (1.0-beta) formats are not supported.`
+    );
   }
-  return `${major}.${String(minor).padStart(2, "0")}${String(patch).padStart(2, "0")}`;
+  return raw;
 }
 
 // index.js
@@ -19454,7 +19451,6 @@ async function run() {
     const password = getInput("forja-password", { required: true });
     const baseUrl = getInput("forja-url") || "https://facturascripts.com";
     const dryRun = (getInput("dry-run") || "").toLowerCase() === "true";
-    const normalizeVersion = (getInput("normalize-version") || "true").toLowerCase() !== "false";
     const desiredStatusRaw = (getInput("status") || "").trim().toLowerCase();
     if (desiredStatusRaw && !["stable", "beta", "0"].includes(desiredStatusRaw)) {
       throw new Error(
@@ -19462,9 +19458,9 @@ async function run() {
       );
     }
     setSecret(password);
-    const version = normalizeVersion ? normalizeVersionForForja(rawVersion) : rawVersion;
+    const version = validateForjaVersion(rawVersion);
     if (version !== rawVersion) {
-      info(`Normalized version "${rawVersion}" \u2192 "${version}" for forja.`);
+      info(`Stripped "v" prefix: "${rawVersion}" \u2192 "${version}".`);
     }
     const jar = new CookieJar();
     const client = createForjaClient({ baseUrl, jar });

@@ -5,7 +5,7 @@ import {
   loginToForja,
   publishBuild,
   updateBuildStatus,
-  normalizeVersionForForja,
+  validateForjaVersion,
 } from './lib.js';
 
 async function run() {
@@ -17,8 +17,6 @@ async function run() {
     const password = core.getInput('forja-password', { required: true });
     const baseUrl = core.getInput('forja-url') || 'https://facturascripts.com';
     const dryRun = (core.getInput('dry-run') || '').toLowerCase() === 'true';
-    const normalizeVersion =
-      (core.getInput('normalize-version') || 'true').toLowerCase() !== 'false';
     const desiredStatusRaw = (core.getInput('status') || '').trim().toLowerCase();
     if (desiredStatusRaw && !['stable', 'beta', '0'].includes(desiredStatusRaw)) {
       throw new Error(
@@ -28,12 +26,9 @@ async function run() {
 
     core.setSecret(password);
 
-    const version = normalizeVersion
-      ? normalizeVersionForForja(rawVersion)
-      : rawVersion;
-
+    const version = validateForjaVersion(rawVersion);
     if (version !== rawVersion) {
-      core.info(`Normalized version "${rawVersion}" → "${version}" for forja.`);
+      core.info(`Stripped "v" prefix: "${rawVersion}" → "${version}".`);
     }
 
     const jar = new CookieJar();

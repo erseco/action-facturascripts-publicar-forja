@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   extractCsrfToken,
   parseBuildsTable,
-  normalizeVersionForForja,
+  validateForjaVersion,
   CookieJar,
 } from '../lib.js';
 
@@ -54,16 +54,18 @@ test('parseBuildsTable extracts id/version pairs', () => {
   ]);
 });
 
-test('normalizeVersionForForja passes through plain integers and x.y', () => {
-  assert.equal(normalizeVersionForForja('7'), '7');
-  assert.equal(normalizeVersionForForja('7.1'), '7.1');
-  assert.equal(normalizeVersionForForja('v7.1'), '7.1');
+test('validateForjaVersion accepts integers and single-decimal numbers', () => {
+  assert.equal(validateForjaVersion('7'), '7');
+  assert.equal(validateForjaVersion('7.1'), '7.1');
+  assert.equal(validateForjaVersion('v7.1'), '7.1');
+  assert.equal(validateForjaVersion('100'), '100');
 });
 
-test('normalizeVersionForForja encodes x.y.z into a monotonic float', () => {
-  assert.equal(normalizeVersionForForja('1.2.3'), '1.0203');
-  assert.equal(normalizeVersionForForja('v1.2.3'), '1.0203');
-  assert.equal(normalizeVersionForForja('2.0.0'), '2.0000');
+test('validateForjaVersion rejects triple-dot and pre-release formats', () => {
+  assert.throws(() => validateForjaVersion('1.2.3'), /not a valid FacturaScripts version/);
+  assert.throws(() => validateForjaVersion('1.0-beta'), /not a valid FacturaScripts version/);
+  assert.throws(() => validateForjaVersion('abc'), /not a valid FacturaScripts version/);
+  assert.throws(() => validateForjaVersion('1.'), /not a valid FacturaScripts version/);
 });
 
 test('CookieJar absorbs Set-Cookie headers and renders Cookie header', () => {

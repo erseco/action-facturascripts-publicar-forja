@@ -10,21 +10,20 @@ GitHub Action que sube un ZIP de plugin como nuevo *build* en la [forja de Factu
 4. Parsea la respuesta para confirmar que aparece una nueva fila de build y expone su id como `output`.
 5. Opcionalmente re-abre el modal de edición del build nuevo y hace un segundo `POST action=edit-build` para fijar su estado (`stable` / `beta` / `0`), preservando `min_php`, `min_core` y `max_core`.
 
-La forja guarda la versión con `floatval`, así que los tags semver tipo `1.2.3` se codifican por defecto en un *float* monótonamente creciente (`1.0203`). Pasa `normalize-version: false` si prefieres enviar el tag literal.
+FacturaScripts solo admite versiones numéricas en `facturascripts.ini`: un entero (`version = 7`) o un decimal (`version = 7.1`). Los formatos `1.0.1` o `1.0-beta` se rechazan en la validación, así que la action falla pronto si detecta un tag con ese formato.
 
 ## Entradas
 
-| Entrada | Obligatorio | Por defecto | Descripción |
-|---|:---:|---|---|
-| `plugin-slug` | ✓ | — | Slug del plugin en la forja en minúsculas (ej. `quickcreate`, `aiscan`). |
-| `zip-path` | ✓ | — | Ruta local al ZIP generado por el paso anterior del release. |
-| `version` | ✓ | — | Versión del build. Se acepta entero, `x.y`, `x.y.z` o `vX.Y.Z`. |
-| `forja-user` | ✓ | — | **Email** con el que entras en facturascripts.com. Usa un secret. |
-| `forja-password` | ✓ | — | Contraseña de la forja. Usa un secret. |
-| `forja-url` | — | `https://facturascripts.com` | URL base de la forja. |
-| `normalize-version` | — | `true` | Si es `true`, semver `x.y.z` se codifica como *float* compatible con la forja. Ponlo a `false` para enviar el tag tal cual. |
-| `status` | — | *(vacío)* | Estado final del build nuevo. Uno de `stable`, `beta`, `0`. Si lo dejas vacío, la forja mantiene el estado por defecto (normalmente `beta`). |
-| `dry-run` | — | `false` | Si es `true`, hace login y obtiene el CSRF pero no envía el POST de subida. |
+| Entrada | Obligatorio | Descripción |
+|---|:---:|---|
+| `plugin-slug` | ✓ | Slug del plugin en la forja en minúsculas (ej. `quickcreate`, `aiscan`). |
+| `zip-path` | ✓ | Ruta local al ZIP generado por el paso anterior del release. |
+| `version` | ✓ | Versión del build. FacturaScripts solo admite entero (`7`) o decimal (`7.1`); se acepta un prefijo opcional `v`. Los formatos `1.0.1` o `1.0-beta` se rechazan. |
+| `forja-user` | ✓ | **Email** con el que entras en facturascripts.com. Usa un secret. |
+| `forja-password` | ✓ | Contraseña de la forja. Usa un secret. |
+| `forja-url` | — | URL base de la forja. Por defecto `https://facturascripts.com`. |
+| `status` | — | Estado final del build nuevo: `stable`, `beta` o `0` (no disponible). Si no se pasa, la forja mantiene el estado por defecto (normalmente `beta`). |
+| `dry-run` | — | Si es `true`, hace login y obtiene el CSRF pero no envía el POST de subida. Por defecto `false`. |
 
 ## Salidas
 

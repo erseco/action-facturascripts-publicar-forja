@@ -20,7 +20,7 @@ import {
   loginToForja,
   publishBuild,
   updateBuildStatus,
-  normalizeVersionForForja,
+  validateForjaVersion,
 } from '../lib.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -62,9 +62,9 @@ console.log(`→ Logging into ${baseUrl} as ${username}…`);
 await loginToForja(client, { username, password });
 console.log(`  Session cookies: ${jar.names().join(', ') || '(none visible)'}`);
 
-const normalized = normalizeVersionForForja(versionArg);
+const normalized = validateForjaVersion(versionArg);
 if (normalized !== versionArg) {
-  console.log(`  Normalized version ${versionArg} → ${normalized}`);
+  console.log(`  Stripped prefix: ${versionArg} → ${normalized}`);
 }
 
 console.log(`→ ${send ? 'Publishing' : 'Dry run of'} ${zipArg} as version ${normalized} to ${slugArg}…`);

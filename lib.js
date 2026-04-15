@@ -443,22 +443,23 @@ export async function updateBuildStatus(client, params) {
 }
 
 /**
- * Normalize a semver-ish version string so the forja (which stores a float)
- * does not reject it. The forja `version` input is type="number" so we
- * send the numeric portion that floatval() would keep, but we keep the
- * display version for logs.
+ * Validate a version string against the format accepted by FacturaScripts
+ * in `facturascripts.ini`. The official docs explicitly reject triple-dot
+ * semver (`1.0.1`) and pre-release suffixes (`1.0-beta`); only integers
+ * (`1`) and single-decimal numbers (`1.0`) are allowed. An optional `v`
+ * prefix is stripped.
  *
  * @param {string} version
+ * @returns {string} the cleaned version string, without the `v` prefix
  */
-export function normalizeVersionForForja(version) {
+export function validateForjaVersion(version) {
   const raw = String(version).trim().replace(/^v/i, '');
-  if (/^\d+(\.\d+)?$/.test(raw)) return raw;
-  const parts = raw.split('.');
-  const major = Number(parts[0] || '0');
-  const minor = Number(parts[1] || '0');
-  const patch = Number(parts[2] || '0');
-  if (Number.isNaN(major) || Number.isNaN(minor) || Number.isNaN(patch)) {
-    throw new Error(`Cannot parse version "${version}" as numeric.`);
+  if (!/^\d+(\.\d+)?$/.test(raw)) {
+    throw new Error(
+      `Version "${version}" is not a valid FacturaScripts version. ` +
+        'Use an integer like "7" or a decimal like "7.1". ' +
+        'Triple-dot (1.0.1) and pre-release (1.0-beta) formats are not supported.'
+    );
   }
-  return `${major}.${String(minor).padStart(2, '0')}${String(patch).padStart(2, '0')}`;
+  return raw;
 }

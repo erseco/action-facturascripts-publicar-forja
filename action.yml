@@ -13,7 +13,7 @@ inputs:
     description: 'Local path to the plugin ZIP produced by the release step.'
     required: true
   version:
-    description: 'Version to attach to the build. Accepts integer, x.y or x.y.z.'
+    description: 'Version to attach to the build. Must be an integer ("7") or a single-decimal number ("7.1"). A leading "v" is stripped. Triple-dot and pre-release formats are rejected by FacturaScripts.'
     required: true
   forja-user:
     description: 'Forja username/email. Use a GitHub secret, never hardcode.'
@@ -25,10 +25,6 @@ inputs:
     description: 'Base URL of the forja.'
     required: false
     default: 'https://facturascripts.com'
-  normalize-version:
-    description: 'If true (default), semver x.y.z is encoded to a forja-compatible numeric version.'
-    required: false
-    default: 'true'
   status:
     description: 'Optional final status for the new build. One of "stable", "beta" or "0" (disabled). Defaults to whatever the forja assigns (usually "beta").'
     required: false

@@ -1,40 +1,43 @@
 # action-facturascripts-publicar-forja
 
-GitHub Action that uploads a plugin ZIP as a new build on the [FacturaScripts forja](https://facturascripts.com/forja) after a release.
+GitHub Action que sube un ZIP de plugin como nuevo *build* en la [forja de FacturaScripts](https://facturascripts.com/forja) tras una *release*, con opción de promover automáticamente el build a `stable`, `beta` o `0` (no disponible).
 
-## What it does
+## Qué hace
 
-1. Logs into `https://facturascripts.com` with `fsNick` + `fsPassword`.
-2. Fetches the admin tab of the plugin page to grab a fresh `multireqtoken` CSRF token from the `#f_add_build` form.
-3. Posts the plugin ZIP as `multipart/form-data` with `action=add-build`.
-4. Parses the response to confirm that a new build row was added and exposes its id as an output.
+1. Inicia sesión en `https://facturascripts.com` haciendo `POST /MeLogin` con `email` y `passwd`.
+2. Pide la pestaña admin del plugin y extrae un `multireqtoken` fresco del formulario `#f_add_build`.
+3. Sube el ZIP como `multipart/form-data` con `action=add-build`.
+4. Parsea la respuesta para confirmar que aparece una nueva fila de build y expone su id como `output`.
+5. Opcionalmente re-abre el modal de edición del build nuevo y hace un segundo `POST action=edit-build` para fijar su estado (`stable` / `beta` / `0`), preservando `min_php`, `min_core` y `max_core`.
 
-The forja stores the build version as a numeric value (`floatval`), so semver tags such as `1.2.3` are transparently encoded as a monotonic float (e.g. `1.0203`) before upload. Pass `normalize-version: false` to send the tag verbatim.
+La forja guarda la versión con `floatval`, así que los tags semver tipo `1.2.3` se codifican por defecto en un *float* monótonamente creciente (`1.0203`). Pasa `normalize-version: false` si prefieres enviar el tag literal.
 
-## Inputs
+## Entradas
 
-| Input | Required | Default | Description |
-|---|---|---|---|
-| `plugin-slug` | ✅ | — | Plugin slug on the forja (lowercase). E.g. `quickcreate`, `aiscan`. |
-| `zip-path` | ✅ | — | Local path to the ZIP produced by the release job. |
-| `version` | ✅ | — | Version for the build. Integer, `x.y`, `x.y.z` or `vX.Y.Z` accepted. |
-| `forja-user` | ✅ | — | Forja login nick. Use a GitHub secret. |
-| `forja-password` | ✅ | — | Forja password. Use a GitHub secret. |
-| `forja-url` | ❌ | `https://facturascripts.com` | Base URL of the forja. |
-| `normalize-version` | ❌ | `true` | Encode semver into a forja-compatible float. Set to `false` to send the tag as-is. |
-| `dry-run` | ❌ | `false` | Log in, resolve the CSRF token and build the request but do not post it. |
+| Entrada | Obligatorio | Por defecto | Descripción |
+|---|:---:|---|---|
+| `plugin-slug` | ✓ | — | Slug del plugin en la forja en minúsculas (ej. `quickcreate`, `aiscan`). |
+| `zip-path` | ✓ | — | Ruta local al ZIP generado por el paso anterior del release. |
+| `version` | ✓ | — | Versión del build. Se acepta entero, `x.y`, `x.y.z` o `vX.Y.Z`. |
+| `forja-user` | ✓ | — | **Email** con el que entras en facturascripts.com. Usa un secret. |
+| `forja-password` | ✓ | — | Contraseña de la forja. Usa un secret. |
+| `forja-url` | — | `https://facturascripts.com` | URL base de la forja. |
+| `normalize-version` | — | `true` | Si es `true`, semver `x.y.z` se codifica como *float* compatible con la forja. Ponlo a `false` para enviar el tag tal cual. |
+| `status` | — | *(vacío)* | Estado final del build nuevo. Uno de `stable`, `beta`, `0`. Si lo dejas vacío, la forja mantiene el estado por defecto (normalmente `beta`). |
+| `dry-run` | — | `false` | Si es `true`, hace login y obtiene el CSRF pero no envía el POST de subida. |
 
-## Outputs
+## Salidas
 
-| Output | Description |
+| Salida | Descripción |
 |---|---|
-| `build-id` | Id of the new build row on the forja. |
-| `build-version` | Version stored on the forja (post-normalization). |
-| `build-url` | Plugin admin URL anchored to the new build modal. |
+| `build-id` | Id del nuevo build en la forja. |
+| `build-version` | Versión almacenada en la forja (tras normalización). |
+| `build-url` | URL al admin del plugin, ancla al modal del build nuevo. |
+| `build-status` | Estado final del build si se pasó `status`; vacío si no. |
 
-## Usage
+## Uso
 
-Add a step after your existing release job:
+Añade un paso al final de tu workflow de release, después de crear la release en GitHub:
 
 ```yaml
 name: Release
@@ -54,110 +57,116 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build plugin zip
+      - name: Preparar zip
         id: zip
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           sed -i "s/^version.*/version = $VERSION/" facturascripts.ini
+          git add facturascripts.ini
+          git -c user.email=ci@example.com -c user.name=ci commit -m "ci: $VERSION" || true
           git archive --format=zip --prefix=QuickCreate/ HEAD -o QuickCreate-$VERSION.zip
 
       - uses: softprops/action-gh-release@v2
         with:
           files: QuickCreate-${{ steps.zip.outputs.VERSION }}.zip
 
-      - name: Publish to FacturaScripts forja
+      - name: Publicar en la forja
         uses: erseco/action-facturascripts-publicar-forja@v1
         with:
           plugin-slug: quickcreate
           zip-path: QuickCreate-${{ steps.zip.outputs.VERSION }}.zip
           version: ${{ steps.zip.outputs.VERSION }}
+          status: stable
           forja-user: ${{ secrets.FS_FORJA_USER }}
           forja-password: ${{ secrets.FS_FORJA_PASSWORD }}
 ```
 
-### Required secrets
+### Secrets necesarios
 
-Set on each plugin repo (or at the organization level to share across plugins):
+En cada repo de plugin (o a nivel de organización si tienes varios):
 
-- `FS_FORJA_USER` — your forja login nick
-- `FS_FORJA_PASSWORD` — your forja password
+- `FS_FORJA_USER` — el **email** con el que inicias sesión en facturascripts.com.
+- `FS_FORJA_PASSWORD` — la contraseña de la forja.
 
 ```bash
 gh secret set FS_FORJA_USER --repo erseco/facturascripts-plugin-quickcreate
 gh secret set FS_FORJA_PASSWORD --repo erseco/facturascripts-plugin-quickcreate
 ```
 
-## Development
+## Requisitos del ZIP
+
+La forja valida el archivo en el servidor. Los tres campos siguientes deben coincidir **exactamente** (sensible a mayúsculas/minúsculas):
+
+1. La carpeta raíz dentro del ZIP (ej. `QuickCreate/`).
+2. El valor del campo `name` en `facturascripts.ini` (ej. `name = 'QuickCreate'`).
+3. El nombre con el que el plugin está registrado en la forja.
+
+Para la mayoría de plugins ese nombre coincide con el *slug* de la URL (en minúsculas), pero no siempre — el plugin `test` está registrado como `test` con carpeta `test/` y `name = 'test'`.
+
+Si la subida falla con `El nombre de la carpeta del zip debe ser X, en lugar de Y` o `Encontrado name = X en el archivo facturascripts.ini, pero se esperaba name = Y`, ajusta los tres campos al valor que te indica el mensaje.
+
+## Desarrollo
 
 ```bash
 npm install
-npm test          # unit tests (no network)
-npm run build     # bundle to dist/index.cjs
+npm test          # tests unitarios (sin red)
+npm run build     # bundle a dist/index.cjs
 ```
 
-### Local end-to-end dry-run
+### Prueba end-to-end en local
 
-Create a `.env` (never commit it):
+Crea un `.env` (nunca lo commitees):
 
 ```
-FS_FORJA_USER=your_nick
-FS_FORJA_PASSWORD=your_password
+FS_FORJA_USER=tu_email@example.com
+FS_FORJA_PASSWORD=tu_password
 ```
 
-Then:
+Y lanza:
 
 ```bash
-node scripts/dry-run.js quickcreate ./QuickCreate-7.1.zip 7.1         # dry run, no upload
-node scripts/dry-run.js quickcreate ./QuickCreate-7.1.zip 7.1 --send  # actual upload
+# Sin subir (dry run): login + CSRF + construcción del request
+node scripts/dry-run.js test ./test-0.2.zip 0.2
+
+# Subida real
+node scripts/dry-run.js test ./test-0.2.zip 0.2 --send
+
+# Subida real + promoción a estable
+node scripts/dry-run.js test ./test-0.2.zip 0.2 --send --status=stable
 ```
 
-## ZIP layout requirements
+## Notas de ingeniería inversa
 
-The forja validates the uploaded archive server-side. All of the following
-must match the plugin's registered name, **case-sensitive**:
-
-1. The top-level folder inside the ZIP (e.g. `QuickCreate/`).
-2. The `name` field inside `facturascripts.ini`
-   (e.g. `name = 'QuickCreate'`).
-3. The plugin name stored on the forja when the plugin was first
-   registered.
-
-For most plugins that name is the same string as the URL slug lowercased
-(`quickcreate` for `QuickCreate`), but not always — the `test` plugin is
-registered as `test` with folder `test/` and `name = 'test'`.
-
-If the upload fails with `El nombre de la carpeta del zip debe ser X, en
-lugar de Y` or `Encontrado name = X en el archivo facturascripts.ini, pero
-se esperaba name = Y`, align all three fields to match the expected value
-reported in the error message.
-
-## Reverse engineering notes
-
-Captured from `https://facturascripts.com/plugins/quickcreate?activetab=admin`
-on 2026-04-15, verified end-to-end by publishing build `3474` to
-`https://facturascripts.com/plugins/test`.
+Capturado en `https://facturascripts.com` el 2026-04-15 y verificado subiendo los builds 3474 y 3475 a `https://facturascripts.com/plugins/test`.
 
 **Login** — `POST /MeLogin`, `application/x-www-form-urlencoded`
-- `multireqtoken` — CSRF token from a prior `GET /MeLogin`
+
+- `multireqtoken` — token CSRF obtenido de un `GET /MeLogin` previo.
 - `action=login`
 - `return=/`
-- `email` — the user's email (not the internal `fsNick`)
+- `email` — el email del usuario (no el `fsNick` del core vanilla).
 - `passwd`
 
-Successful login issues two `HttpOnly` cookies: `fsIdcontacto` and
-`fsLogkey`. Both are required for subsequent requests.
+Un login correcto devuelve dos cookies `HttpOnly`: `fsIdcontacto` y `fsLogkey`, ambas necesarias para las llamadas posteriores.
 
-**Publish** — `POST /plugins/{slug}`, `multipart/form-data`, form id
-`f_add_build`
-- `multireqtoken` — CSRF token from `GET /plugins/{slug}?activetab=admin`,
-  scoped to the `#f_add_build` form
+**Subida de build** — `POST /plugins/{slug}`, `multipart/form-data`, formulario `#f_add_build`
+
+- `multireqtoken` — CSRF del `GET /plugins/{slug}?activetab=admin`, extraído del bloque del formulario `#f_add_build`.
 - `action=add-build`
 - `activetab=admin`
-- `version` — numeric, stored via PHP `floatval`
-- `zip` — the plugin archive (max 99 MB), must satisfy the layout rules
-  above
+- `version` — numérico, se almacena con `floatval` en PHP.
+- `zip` — el archivo del plugin (máx 99 MB) cumpliendo las reglas de layout de arriba.
 
-## License
+**Promoción del build** — `POST /plugins/{slug}`, `application/x-www-form-urlencoded`
+
+- `multireqtoken` — CSRF del modal `#build{id}Modal` en `/plugins/{slug}?activetab=admin`.
+- `action=edit-build`
+- `activetab=admin`
+- `id_build` — id del build a editar.
+- `status` — `stable`, `beta` o `0`.
+- `min_php`, `min_core`, `max_core` — deben reenviarse (el endpoint no hace update parcial). La action los lee del modal actual antes de enviar la promoción.
+
+## Licencia
 
 MIT

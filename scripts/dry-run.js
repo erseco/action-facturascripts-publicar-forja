@@ -19,6 +19,7 @@ import {
   createForjaClient,
   loginToForja,
   publishBuild,
+  updateBuildStatus,
   normalizeVersionForForja,
 } from '../lib.js';
 
@@ -36,10 +37,15 @@ if (existsSync(envPath)) {
 
 const [, , slugArg, zipArg, versionArg, ...flags] = process.argv;
 if (!slugArg || !zipArg || !versionArg) {
-  console.error('usage: node scripts/dry-run.js <slug> <zip-path> <version> [--send]');
+  console.error(
+    'usage: node scripts/dry-run.js <slug> <zip-path> <version> [--send] [--status=stable|beta|0]'
+  );
   process.exit(64);
 }
 const send = flags.includes('--send');
+const statusFlag = flags
+  .find((f) => f.startsWith('--status='))
+  ?.split('=')[1];
 
 const username = process.env.FS_FORJA_USER;
 const password = process.env.FS_FORJA_PASSWORD;
@@ -69,3 +75,13 @@ const result = await publishBuild(client, {
   dryRun: !send,
 });
 console.log(JSON.stringify(result, null, 2));
+
+if (send && statusFlag && result.buildId) {
+  console.log(`→ Updating build ${result.buildId} status to "${statusFlag}"…`);
+  const updated = await updateBuildStatus(client, {
+    slug: slugArg,
+    buildId: result.buildId,
+    status: statusFlag,
+  });
+  console.log(JSON.stringify(updated, null, 2));
+}

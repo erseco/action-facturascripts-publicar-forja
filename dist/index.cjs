@@ -19347,6 +19347,90 @@ async function publishBuild(client, params) {
     buildUrl: `${client.baseUrl}/plugins/${encodeURIComponent(slug)}#build${newBuild.id}Modal`
   };
 }
+function parseBuildEditModal(html, buildId) {
+  const modalRe = new RegExp(
+    `id=["']build${buildId}Modal["'][\\s\\S]*?id_build["']\\s+value=["']${buildId}["'][\\s\\S]*?<div class=["']modal-footer`,
+    "i"
+  );
+  const match = html.match(modalRe);
+  if (!match) {
+    throw new Error(`Could not find edit modal for build id ${buildId}.`);
+  }
+  const modal = match[0];
+  const tokenMatch = modal.match(
+    /name=["']multireqtoken["']\s+value=["']([^"']+)["']/
+  );
+  if (!tokenMatch) {
+    throw new Error(`No multireqtoken in edit modal for build ${buildId}.`);
+  }
+  const statusMatch = modal.match(
+    /name=["']status["'][\s\S]*?<option[^>]*value=["']([^"']+)["'][^>]*selected/i
+  );
+  const status = statusMatch ? statusMatch[1] : "";
+  function number(name) {
+    const m = modal.match(
+      new RegExp(`name=["']${name}["'][^>]*value=["']([^"']*)["']`, "i")
+    );
+    return m ? m[1] : "";
+  }
+  return {
+    multireqtoken: tokenMatch[1],
+    status,
+    min_php: number("min_php"),
+    min_core: number("min_core"),
+    max_core: number("max_core")
+  };
+}
+async function updateBuildStatus(client, params) {
+  const slug = params.slug.trim().toLowerCase();
+  const { buildId, status, overrides = {} } = params;
+  if (!["stable", "beta", "0"].includes(status)) {
+    throw new Error(
+      `Invalid status "${status}". Expected one of stable, beta, 0.`
+    );
+  }
+  const adminResponse = await client.request(
+    `/plugins/${encodeURIComponent(slug)}?activetab=admin`
+  );
+  if (adminResponse.status !== 200) {
+    throw new Error(
+      `GET /plugins/${slug}?activetab=admin failed with status ${adminResponse.status}`
+    );
+  }
+  const html = await adminResponse.text();
+  const current = parseBuildEditModal(html, buildId);
+  const body = new URLSearchParams({
+    multireqtoken: current.multireqtoken,
+    action: "edit-build",
+    activetab: "admin",
+    id_build: buildId,
+    status,
+    min_php: overrides.min_php ?? current.min_php,
+    min_core: overrides.min_core ?? current.min_core,
+    max_core: overrides.max_core ?? current.max_core
+  });
+  const response = await client.request(
+    `/plugins/${encodeURIComponent(slug)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    }
+  );
+  const resultHtml = await response.text();
+  const reload = await client.request(
+    `/plugins/${encodeURIComponent(slug)}?activetab=admin`
+  );
+  const reloadedHtml = await reload.text();
+  const reloaded = parseBuildEditModal(reloadedHtml, buildId);
+  if (reloaded.status !== status) {
+    const alerts = Array.from(resultHtml.matchAll(/alert-[\w-]+[\s\S]*?<\/div>/g)).map((m) => m[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 3);
+    throw new Error(
+      `Build ${buildId} status did not update to "${status}" (still "${reloaded.status}"). ${alerts.length ? "Forja: " + alerts.join(" | ") : ""}`
+    );
+  }
+  return { buildId, status: reloaded.status, previous: current };
+}
 function normalizeVersionForForja(version) {
   const raw = String(version).trim().replace(/^v/i, "");
   if (/^\d+(\.\d+)?$/.test(raw)) return raw;
@@ -19371,6 +19455,12 @@ async function run() {
     const baseUrl = getInput("forja-url") || "https://facturascripts.com";
     const dryRun = (getInput("dry-run") || "").toLowerCase() === "true";
     const normalizeVersion = (getInput("normalize-version") || "true").toLowerCase() !== "false";
+    const desiredStatusRaw = (getInput("status") || "").trim().toLowerCase();
+    if (desiredStatusRaw && !["stable", "beta", "0"].includes(desiredStatusRaw)) {
+      throw new Error(
+        `Input "status" must be one of "stable", "beta" or "0", got "${desiredStatusRaw}".`
+      );
+    }
     setSecret(password);
     const version = normalizeVersion ? normalizeVersionForForja(rawVersion) : rawVersion;
     if (version !== rawVersion) {
@@ -19401,6 +19491,20 @@ async function run() {
     setOutput("build-id", result.buildId);
     setOutput("build-version", result.buildVersion);
     setOutput("build-url", result.buildUrl);
+    if (desiredStatusRaw) {
+      info(`Updating build ${result.buildId} status to "${desiredStatusRaw}"\u2026`);
+      const updated = await updateBuildStatus(client, {
+        slug,
+        buildId: result.buildId,
+        status: desiredStatusRaw
+      });
+      info(
+        `Build ${result.buildId} status set to "${updated.status}" (was "${updated.previous.status}").`
+      );
+      setOutput("build-status", updated.status);
+    } else {
+      setOutput("build-status", "");
+    }
   } catch (error2) {
     setFailed(`action-facturascripts-publicar-forja failed: ${error2.message}`);
   }

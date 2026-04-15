@@ -4,6 +4,7 @@ import {
   createForjaClient,
   loginToForja,
   publishBuild,
+  updateBuildStatus,
   normalizeVersionForForja,
 } from './lib.js';
 
@@ -18,6 +19,12 @@ async function run() {
     const dryRun = (core.getInput('dry-run') || '').toLowerCase() === 'true';
     const normalizeVersion =
       (core.getInput('normalize-version') || 'true').toLowerCase() !== 'false';
+    const desiredStatusRaw = (core.getInput('status') || '').trim().toLowerCase();
+    if (desiredStatusRaw && !['stable', 'beta', '0'].includes(desiredStatusRaw)) {
+      throw new Error(
+        `Input "status" must be one of "stable", "beta" or "0", got "${desiredStatusRaw}".`
+      );
+    }
 
     core.setSecret(password);
 
@@ -58,6 +65,21 @@ async function run() {
     core.setOutput('build-id', result.buildId);
     core.setOutput('build-version', result.buildVersion);
     core.setOutput('build-url', result.buildUrl);
+
+    if (desiredStatusRaw) {
+      core.info(`Updating build ${result.buildId} status to "${desiredStatusRaw}"…`);
+      const updated = await updateBuildStatus(client, {
+        slug,
+        buildId: result.buildId,
+        status: desiredStatusRaw,
+      });
+      core.info(
+        `Build ${result.buildId} status set to "${updated.status}" (was "${updated.previous.status}").`
+      );
+      core.setOutput('build-status', updated.status);
+    } else {
+      core.setOutput('build-status', '');
+    }
   } catch (error) {
     core.setFailed(`action-facturascripts-publicar-forja failed: ${error.message}`);
   }

@@ -29,6 +29,9 @@ inputs:
     description: 'If true (default), semver x.y.z is encoded to a forja-compatible numeric version.'
     required: false
     default: 'true'
+  status:
+    description: 'Optional final status for the new build. One of "stable", "beta" or "0" (disabled). Defaults to whatever the forja assigns (usually "beta").'
+    required: false
   dry-run:
     description: 'If true, login and fetch the CSRF token but do not POST the build.'
     required: false
@@ -41,6 +44,8 @@ outputs:
     description: 'Version stored on the forja (post-normalization).'
   build-url:
     description: 'URL to the plugin admin page (anchored to the new build modal when available).'
+  build-status:
+    description: 'Final status of the new build when the status input was set; empty otherwise.'
 
 runs:
   using: 'node20'

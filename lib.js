@@ -323,6 +323,126 @@ export async function publishBuild(client, params) {
 }
 
 /**
+ * Extract the per-build edit modal fields for a given build id from the
+ * admin page HTML. Returns an object with the current multireqtoken,
+ * status, min_php, min_core and max_core values so they can be re-submitted
+ * unchanged when promoting a build to a new state.
+ *
+ * @param {string} html
+ * @param {string} buildId
+ */
+export function parseBuildEditModal(html, buildId) {
+  const modalRe = new RegExp(
+    `id=["']build${buildId}Modal["'][\\s\\S]*?id_build["']\\s+value=["']${buildId}["'][\\s\\S]*?<div class=["']modal-footer`,
+    'i'
+  );
+  const match = html.match(modalRe);
+  if (!match) {
+    throw new Error(`Could not find edit modal for build id ${buildId}.`);
+  }
+  const modal = match[0];
+
+  const tokenMatch = modal.match(
+    /name=["']multireqtoken["']\s+value=["']([^"']+)["']/
+  );
+  if (!tokenMatch) {
+    throw new Error(`No multireqtoken in edit modal for build ${buildId}.`);
+  }
+
+  // The status is a <select> with `selected` on the current option.
+  const statusMatch = modal.match(
+    /name=["']status["'][\s\S]*?<option[^>]*value=["']([^"']+)["'][^>]*selected/i
+  );
+  const status = statusMatch ? statusMatch[1] : '';
+
+  function number(name) {
+    const m = modal.match(
+      new RegExp(`name=["']${name}["'][^>]*value=["']([^"']*)["']`, 'i')
+    );
+    return m ? m[1] : '';
+  }
+
+  return {
+    multireqtoken: tokenMatch[1],
+    status,
+    min_php: number('min_php'),
+    min_core: number('min_core'),
+    max_core: number('max_core'),
+  };
+}
+
+/**
+ * Promote a build to a new state on the forja (stable/beta/disabled).
+ *
+ * @param {ReturnType<typeof createForjaClient>} client
+ * @param {object} params
+ * @param {string} params.slug
+ * @param {string} params.buildId
+ * @param {'stable' | 'beta' | '0'} params.status
+ * @param {object} [params.overrides] - optional overrides for min_php, min_core, max_core
+ */
+export async function updateBuildStatus(client, params) {
+  const slug = params.slug.trim().toLowerCase();
+  const { buildId, status, overrides = {} } = params;
+  if (!['stable', 'beta', '0'].includes(status)) {
+    throw new Error(
+      `Invalid status "${status}". Expected one of stable, beta, 0.`
+    );
+  }
+
+  const adminResponse = await client.request(
+    `/plugins/${encodeURIComponent(slug)}?activetab=admin`
+  );
+  if (adminResponse.status !== 200) {
+    throw new Error(
+      `GET /plugins/${slug}?activetab=admin failed with status ${adminResponse.status}`
+    );
+  }
+  const html = await adminResponse.text();
+  const current = parseBuildEditModal(html, buildId);
+
+  const body = new URLSearchParams({
+    multireqtoken: current.multireqtoken,
+    action: 'edit-build',
+    activetab: 'admin',
+    id_build: buildId,
+    status,
+    min_php: overrides.min_php ?? current.min_php,
+    min_core: overrides.min_core ?? current.min_core,
+    max_core: overrides.max_core ?? current.max_core,
+  });
+
+  const response = await client.request(
+    `/plugins/${encodeURIComponent(slug)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    }
+  );
+  const resultHtml = await response.text();
+
+  // Verify: reload the modal state and check status is what we requested.
+  const reload = await client.request(
+    `/plugins/${encodeURIComponent(slug)}?activetab=admin`
+  );
+  const reloadedHtml = await reload.text();
+  const reloaded = parseBuildEditModal(reloadedHtml, buildId);
+  if (reloaded.status !== status) {
+    const alerts = Array.from(resultHtml.matchAll(/alert-[\w-]+[\s\S]*?<\/div>/g))
+      .map((m) => m[0].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+      .slice(0, 3);
+    throw new Error(
+      `Build ${buildId} status did not update to "${status}" (still "${reloaded.status}"). ${
+        alerts.length ? 'Forja: ' + alerts.join(' | ') : ''
+      }`
+    );
+  }
+
+  return { buildId, status: reloaded.status, previous: current };
+}
+
+/**
  * Normalize a semver-ish version string so the forja (which stores a float)
  * does not reject it. The forja `version` input is type="number" so we
  * send the numeric portion that floatval() would keep, but we keep the

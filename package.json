@@ -10,7 +10,7 @@
     "dry-run": "node scripts/dry-run.js"
   },
   "dependencies": {
-    "@actions/core": "^3.0.0"
+    "@actions/core": "^3.0.1"
   },
   "devDependencies": {
     "esbuild": "^0.28.0"

@@ -1,0 +1,47 @@
+---
+name: Dependabot dist
+
+# This is a JavaScript GitHub Action, so the bundled output in dist/ is committed
+# to the repo and run directly by the runner (action.yml -> main: dist/index.cjs).
+# Dependabot only updates package.json / package-lock.json, so when a build
+# dependency such as esbuild changes the generated bundle, the committed dist/
+# goes stale and the CI "Verify dist is up to date" guard fails.
+#
+# This workflow rebuilds dist/ on Dependabot PRs and pushes the result back to
+# the PR branch, keeping it in sync automatically.
+#
+# Note: pushes made with the default GITHUB_TOKEN do not re-trigger workflow
+# runs. The rebuilt commit is correct, but CI won't re-run on it. If you enforce
+# required status checks via branch protection, push with a PAT stored as a
+# Dependabot secret instead (actions/checkout `token:` input).
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild-dist:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - name: Commit rebuilt dist
+        run: |
+          if git diff --quiet dist/; then
+            echo "dist/ already up to date; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/
+          git commit -m "build: rebuild dist/ for dependency update"
+          git push
